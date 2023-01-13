@@ -1,15 +1,16 @@
-CUDA_VERSION := 11.2.2
+CUDA_VERSION := 11.7.1
 CUDA_FLAVOR := cudnn8-runtime
-CUDA_OS := ubuntu20.04
-BASE_CONTAINER := nvidia/cuda:$(CUDA_VERSION)-$(CUDA_FLAVOR)-$(CUDA_OS)
+CUDA_OS := ubuntu22.04
+ROOT_CONTAINER := nvidia/cuda:$(CUDA_VERSION)-$(CUDA_FLAVOR)-$(CUDA_OS)
+FOUNDATION := docker-stacks-foundation
 BASE_NOTEBOOKS := base minimal
 NOTEBOOKS := r scipy datascience tensorflow
 BASE_IMAGES := $(BASE_NOTEBOOKS:%=jupyter-%-notebook-gpu)
 PUSH_IMAGES := $(NOTEBOOKS:%=jupyter-%-notebook-gpu)
-IMAGES := $(BASE_IMAGES) $(PUSH_IMAGES)
+IMAGES := $(FOUNDATION:%-gpu) $(BASE_IMAGES) $(PUSH_IMAGES)
 JUPYTER_DOCKER_STACKS := https://raw.githubusercontent.com/jupyter/docker-stacks/master
 DOCKER_FILES := $(BASE_NOTEBOOKS:%=Dockerfile.%-notebook) $(NOTEBOOKS:%=Dockerfile.%-notebook)
-USER := pbatey
+USER := kentwait
 TAGS := latest $(CUDA_VERSION) $(CUDA_FLAVOR) $(CUDA_OS)
 
 .PHONY: all
@@ -26,33 +27,41 @@ $(DOCKER_FILES):
 # images are phony targets that don't end up as files
 
 # dependencies for build order
+jupyter-base-notebook-gpu: docker-stacks-foundation-gpu
 jupyter-minimal-notebook-gpu: jupyter-base-notebook-gpu
 jupyter-r-notebook-gpu: jupyter-minimal-notebook-gpu
 jupyter-scipy-notebook-gpu: jupyter-minimal-notebook-gpu
 jupyter-datascience-notebook-gpu: jupyter-scipy-notebook-gpu
 jupyter-tensorflow-notebook-gpu: jupyter-scipy-notebook-gpu
 
-# base image from cuda base
+# foundation image from cuda base
+docker-stacks-foundation-gpu:
+	make depends
+	@echo Building...
+	cd docker-stacks/$(FOUNDATION); docker build --build-arg ROOT_CONTAINER=$(ROOT_CONTAINER) -t $(USER)/$(FOUNDATION)-gpu . > build.log
+
+# # base image from cuda base
 jupyter-base-notebook-gpu: Dockerfile.base-notebook
 	make depends
 	@echo Building $@ ...
-	docker build --build-arg BASE_CONTAINER=$(BASE_CONTAINER) -f $< -t $(USER)/$@ . > build.log
+	@echo docker build --build-arg BASE_CONTAINER=$(USER)/$(FOUNDATION)-gpu -f $< -t $(USER)/$@ . \>\> build.log
+	@docker build --build-arg BASE_CONTAINER=$(USER)/$(FOUNDATION)-gpu -f $< -t $(USER)/$@ . >> build.log
 
 # other images
 jupyter-%-gpu: Dockerfile.%
 	make depends
 	@echo Building $@ ...
-	@echo docker build --build-arg BASE_CONTAINER=$(USER)/$$(awk -F'=' '/ARG BASE_CONTAINER/ {gsub("/","-",$$2); print $$2}' $<)-gpu -f $< -t $(USER)/$@ . \>\> build.log
-	@docker build --build-arg BASE_CONTAINER=$(USER)/$$(awk -F'=' '/ARG BASE_CONTAINER/ {gsub("/","-",$$2);print $$2}' $<)-gpu -f $< -t $(USER)/$@ . >> build.log
+	@echo docker build --build-arg BASE_CONTAINER=$(USER)/jupyter-$$(awk -F'=' '/ARG BASE_CONTAINER/ {split($$2,s,"/"); print s[2]}' $<)-gpu -f $< -t $(USER)/$@ . \>\> build.log
+	@docker build --build-arg BASE_CONTAINER=$(USER)/jupyter-$$(awk -F'=' '/ARG BASE_CONTAINER/ {split($$2,s,"/"); print s[2]}' $<)-gpu -f $< -t $(USER)/$@ . >> build.log
 
 .PHONY: clean
 clean:
-	rm -f Dockerfile.*-notebook
+	rm -f Dockerfile.*-notebook Dockerfile.*-foundation
 	@if [ -f .cleanme ]; then \
     echo "rm -f $$(cat .cleanme) .cleanme"; \
     rm -f $$(cat .cleanme) .cleanme; \
   fi;
-	rm -f build.log
+	rm -f build.log && rm -rf docker-stacks
 
 # copy any files referenced in an ADD or COPY line
 .PHONY: depends
