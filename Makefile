@@ -1,4 +1,7 @@
-BASE_CONTAINER := nvidia/cuda:11.2.2-cudnn8-runtime-ubuntu20.04
+CUDA_VERSION := 11.2.2
+CUDA_FLAVOR := cudnn8-runtime
+CUDA_OS := ubuntu20.04
+BASE_CONTAINER := nvidia/cuda:$(CUDA_VERSION)-$(CUDA_FLAVOR)-$(CUDA_OS)
 BASE_NOTEBOOKS := base minimal
 NOTEBOOKS := r scipy datascience tensorflow
 BASE_IMAGES := $(BASE_NOTEBOOKS:%=jupyter-%-notebook-gpu)
@@ -7,7 +10,7 @@ IMAGES := $(BASE_IMAGES) $(PUSH_IMAGES)
 JUPYTER_DOCKER_STACKS := https://raw.githubusercontent.com/jupyter/docker-stacks/master
 DOCKER_FILES := $(BASE_NOTEBOOKS:%=Dockerfile.%-notebook) $(NOTEBOOKS:%=Dockerfile.%-notebook)
 USER := pbatey
-TAGS := latest cuda-11.2.2 cudnn-8 ubuntu-20.04 
+TAGS := latest $(CUDA_VERSION) $(CUDA_FLAVOR) $(CUDA_OS)
 
 .PHONY: all
 all: docker-stacks $(IMAGES)
