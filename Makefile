@@ -33,12 +33,8 @@ FOUNDATION_COMMAND = docker build \
  -t $(USER)/$(FOUNDATION)-cuda:$(TAG) \
  $(FOUNDATION_CONTEXT)
 
-# make docker-stacks
-docker-stacks:
-	git clone https://github.com/jupyter/docker-stacks.git
-
 # foundation image from cuda base
-build/docker-stacks-foundation-cuda: docker-stacks
+build/docker-stacks-foundation-cuda:
 	@echo Building $@ ...
 	@echo $(FOUNDATION_COMMAND)
 	@$(shell $(FOUNDATION_COMMAND) 2>&1 | tee build.$(FOUNDATION).log) 
@@ -86,9 +82,9 @@ rm-all: $(foreach I, $(IMAGES), clean/$(I))
 
 # Build all images
 .PHONY: all
-all: docker-stacks build-all
+all: build-all
 
 # Clean up
 .PHONY: clean
 clean:
-	rm -f build.*.log && rm -rf docker-stacks
+	rm -f build.*.log
