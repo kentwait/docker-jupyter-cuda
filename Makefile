@@ -1,89 +1,94 @@
-BASE_CONTAINER := nvidia/cuda:11.2.2-cudnn8-runtime-ubuntu20.04
-BASE_NOTEBOOKS := base minimal
-NOTEBOOKS := r scipy datascience tensorflow
-BASE_IMAGES := $(BASE_NOTEBOOKS:%=jupyter-%-notebook-gpu)
-PUSH_IMAGES := $(NOTEBOOKS:%=jupyter-%-notebook-gpu)
-IMAGES := $(BASE_IMAGES) $(PUSH_IMAGES)
+# CUDA variables to pick the right base image
+CUDA_VERSION := 11.7.1
+CUDA_FLAVOR := cudnn8-runtime
+CUDA_OS := ubuntu22.04
+# Python version
+PYTHON_VERSION := 3.10
+# Names of Jupyter containers in docker-stacks to build
+ROOT_CONTAINER := nvidia/cuda:$(CUDA_VERSION)-$(CUDA_FLAVOR)-$(CUDA_OS)
+FOUNDATION := docker-stacks-foundation
+NOTEBOOKS := base minimal r scipy datascience tensorflow pyspark all-spark
 JUPYTER_DOCKER_STACKS := https://raw.githubusercontent.com/jupyter/docker-stacks/master
-DOCKER_FILES := $(BASE_NOTEBOOKS:%=Dockerfile.%-notebook) $(NOTEBOOKS:%=Dockerfile.%-notebook)
-USER := pbatey
-TAGS := latest cuda-11.2.2 cudnn-8 ubuntu-20.04 
+# docker-jupyter-cuda images to build
+FOUNDATION_IMAGE := $(FOUNDATION:%-cuda)
+IMAGES := $(FOUNDATION_IMAGE) $(NOTEBOOKS:%=%-notebook-cuda)
+# Dockerhub user and tag
+USER := kentwait
+TAG := cuda$(CUDA_VERSION)-$(CUDA_FLAVOR)-$(CUDA_OS)-py$(PYTHON_VERSION)
 
-.PHONY: all
-all: docker-stacks $(IMAGES)
+# Build variables
+CONTEXT = docker-stacks/$(patsubst %-cuda,%,$*)
+DOCKERFILE = $(CONTEXT)/Dockerfile
+BASE_CONTAINER = $(USER)/$$(awk -F'=' '/ARG BASE_CONTAINER/ {split($$2,s,"/"); print s[2]}' $(DOCKERFILE))-cuda:$(TAG)
+COMMAND = docker build \
+		--build-arg BASE_CONTAINER=$(BASE_CONTAINER) \
+		--build-arg PYTHON_VERSION=$(PYTHON_VERSION) \
+		-t $(USER)/$*-cuda:$(TAG) \
+		$(CONTEXT)
+# For foundation only
+FOUNDATION_CONTEXT = docker-stacks/$(FOUNDATION)
+FOUNDATION_COMMAND = docker build \
+ --build-arg ROOT_CONTAINER=$(ROOT_CONTAINER) \
+ --build-arg PYTHON_VERSION=$(PYTHON_VERSION) \
+ -t $(USER)/$(FOUNDATION)-cuda:$(TAG) \
+ $(FOUNDATION_CONTEXT)
 
+# make docker-stacks
 docker-stacks:
 	git clone https://github.com/jupyter/docker-stacks.git
 
-.PHONY: docker-files
-docker-files: $(DOCKER_FILES)
-$(DOCKER_FILES):
-	cp docker-stacks/$(subst .,,$(suffix $@))/Dockerfile $@
-
-# images are phony targets that don't end up as files
+# foundation image from cuda base
+build/docker-stacks-foundation-cuda: docker-stacks
+	@echo Building $@ ...
+	@echo $(FOUNDATION_COMMAND)
+	@$(shell $(FOUNDATION_COMMAND) 2>&1 | tee build.$(FOUNDATION).log) 
 
 # dependencies for build order
-jupyter-minimal-notebook-gpu: jupyter-base-notebook-gpu
-jupyter-r-notebook-gpu: jupyter-minimal-notebook-gpu
-jupyter-scipy-notebook-gpu: jupyter-minimal-notebook-gpu
-jupyter-datascience-notebook-gpu: jupyter-scipy-notebook-gpu
-jupyter-tensorflow-notebook-gpu: jupyter-scipy-notebook-gpu
-
-# base image from cuda base
-jupyter-base-notebook-gpu: Dockerfile.base-notebook
-	make depends
-	@echo Building $@ ...
-	docker build --build-arg BASE_CONTAINER=$(BASE_CONTAINER) -f $< -t $(USER)/$@ . > build.log
+build/base-notebook-cuda: build/docker-stacks-foundation-cuda
+build/minimal-notebook-cuda: build/base-notebook-cuda
+build/r-notebook-cuda: build/minimal-notebook-cuda
+build/scipy-notebook-cuda: build/minimal-notebook-cuda
+build/datascience-notebook-cuda: build/scipy-notebook-cuda
+build/tensorflow-notebook-cuda: build/scipy-notebook-cuda
+build/pyspark-notebook-cuda: build/scipy-notebook-cuda
+build/all-pyspark-notebook-cuda: build/pyspark-notebook-cuda
 
 # other images
-jupyter-%-gpu: Dockerfile.%
-	make depends
-	@echo Building $@ ...
-	@echo docker build --build-arg BASE_CONTAINER=$(USER)/$$(awk -F'=' '/ARG BASE_CONTAINER/ {gsub("/","-",$$2); print $$2}' $<)-gpu -f $< -t $(USER)/$@ . \>\> build.log
-	@docker build --build-arg BASE_CONTAINER=$(USER)/$$(awk -F'=' '/ARG BASE_CONTAINER/ {gsub("/","-",$$2);print $$2}' $<)-gpu -f $< -t $(USER)/$@ . >> build.log
+build/%-cuda:
+	@echo Building $@
+	@echo $(COMMAND)
+	@$(shell $(COMMAND) 2>&1 | tee build.$*.log) 
+build-all: $(foreach I, $(IMAGES), build/$(I))
 
+# Push to Dockerhub under username $USER
+push/%:
+	docker push --all-tags $(USER)/$(notdir $@)
+push-all: $(foreach I, $(IMAGES), push/$(I))
+
+# Pull from Dockerhub from username $USER
+pull/%:
+	docker pull $(USER)/$(notdir $@)
+pull-all: $(foreach I, $(IMAGES), pull/$(I))
+
+# Returns an error
+# ERROR: usage: __main__.py [options] [file_or_dir] [file_or_dir] [...]
+# __main__.py: error: unrecognized arguments: --numprocesses /Users/kent/src/docker-jupyter-cuda/docker-stacks/tests/docker-stacks-foundation
+# Run tests against a stack
+# test/%-cuda: 
+# 	cd docker-stacks && \
+# 	python3 -m tests.run_tests --short-image-name "$(notdir $*)" --owner "$(USER)"
+# test-all: $(foreach I, $(IMAGES), test/$(I))
+
+# Remove images
+rm/%:
+	docker rmi $(USER)/$(notdir $@)
+rm-all: $(foreach I, $(IMAGES), clean/$(I))
+
+# Build all images
+.PHONY: all
+all: docker-stacks build-all
+
+# Clean up
 .PHONY: clean
 clean:
-	rm -f Dockerfile.*-notebook
-	@if [ -f .cleanme ]; then \
-    echo "rm -f $$(cat .cleanme) .cleanme"; \
-    rm -f $$(cat .cleanme) .cleanme; \
-  fi;
-	rm -f build.log
-
-# copy any files referenced in an ADD or COPY line
-.PHONY: depends
-depends:
-	@ \
-  echo rm -f .cleanme; \
-  rm -f .cleanme; \
-  awk '/ADD/||/COPY/ {$$1="";$$NF="";print FILENAME, $$0}' Dockerfile.*-notebook | \
-    while read docker files; do \
-      echo "$$files" | tr ' ' '\n' | while read file; do \
-        echo "echo $${file} >> .cleanme"; \
-        echo $${file} >> .cleanme; \
-        if [ ! -f $$file ]; then \
-          echo cp docker-stacks/$${docker##*.}/$${file} $${file}; \
-          cp docker-stacks/$${docker##*.}/$${file} $${file}; \
-          echo chmod +x $${file}; \
-          chmod +x $${file}; \
-        fi;\
-      done;\
-    done
-
-.PHONY: tag
-tag:
-	@\
-  tag=$$(date +%Y%h%d | tr '[:upper:]' '[:lower:]'); \
-  for image in $(IMAGES); do \
-    echo docker tag $(USER)/$$image $(USER)/$$image:$$tag; \
-    docker tag $(USER)/$$image $(USER)/$$image:$$tag; \
-  done; \
-  echo;echo "Use the following commands to push";echo; \
-  for image in $(PUSH_IMAGES); do \
-    echo " " docker push $(USER)/$$image:$$tag; \
-  done; \
-  echo;echo "Use the following commands to update the image descriptions";echo; \
-  for image in $(PUSH_IMAGES); do \
-    echo " " scripts/docker-doc.sh $(USER)/$$image docker-overview.md; \
-  done
+	rm -f build.*.log && rm -rf docker-stacks
