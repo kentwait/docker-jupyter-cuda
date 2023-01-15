@@ -1,0 +1,3 @@
+[submodule "docker-stacks"]
+	path = docker-stacks
+	url = https://github.com/kentwait/docker-stacks.git
