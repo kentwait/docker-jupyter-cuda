@@ -14,7 +14,9 @@ NOTEBOOKS := \
 	scipy \
 	datascience \
 	tensorflow \
+	tensorflow-datascience \
 	pytorch \
+	pytorch-datascience \
 	pyspark \
 	all-spark
 JUPYTER_DOCKER_STACKS := https://raw.githubusercontent.com/jupyter/docker-stacks/master
@@ -55,7 +57,9 @@ build/r-notebook-cuda: build/minimal-notebook-cuda
 build/scipy-notebook-cuda: build/minimal-notebook-cuda
 build/datascience-notebook-cuda: build/scipy-notebook-cuda
 build/tensorflow-notebook-cuda: build/scipy-notebook-cuda
+build/tensorflow-datascience-notebook-cuda: build/scipy-notebook-cuda
 build/pytorch-notebook-cuda: build/scipy-notebook-cuda
+build/pytorch-datascience-notebook-cuda: build/scipy-notebook-cuda
 build/pyspark-notebook-cuda: build/scipy-notebook-cuda
 build/all-pyspark-notebook-cuda: build/pyspark-notebook-cuda
 
