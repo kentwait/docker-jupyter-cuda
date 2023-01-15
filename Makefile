@@ -7,7 +7,16 @@ PYTHON_VERSION := 3.10
 # Names of Jupyter containers in docker-stacks to build
 ROOT_CONTAINER := nvidia/cuda:$(CUDA_VERSION)-$(CUDA_FLAVOR)-$(CUDA_OS)
 FOUNDATION := docker-stacks-foundation
-NOTEBOOKS := base minimal r scipy datascience tensorflow pyspark all-spark
+NOTEBOOKS := \
+	base \
+	minimal \
+	r \
+	scipy \
+	datascience \
+	tensorflow \
+	pytorch \
+	pyspark \
+	all-spark
 JUPYTER_DOCKER_STACKS := https://raw.githubusercontent.com/jupyter/docker-stacks/master
 # docker-jupyter-cuda images to build
 FOUNDATION_IMAGE := $(FOUNDATION:%-cuda)
@@ -46,6 +55,7 @@ build/r-notebook-cuda: build/minimal-notebook-cuda
 build/scipy-notebook-cuda: build/minimal-notebook-cuda
 build/datascience-notebook-cuda: build/scipy-notebook-cuda
 build/tensorflow-notebook-cuda: build/scipy-notebook-cuda
+build/pytorch-notebook-cuda: build/scipy-notebook-cuda
 build/pyspark-notebook-cuda: build/scipy-notebook-cuda
 build/all-pyspark-notebook-cuda: build/pyspark-notebook-cuda
 
