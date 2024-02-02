@@ -47,10 +47,10 @@ For other combinations of Jupyter, CUDA, Ubuntu and Python, please [build your o
 
 ### Getting Started
 
-1. Clone this repository
+1. Clone this repository and the docker-stacks submodule
 
 ```bash
-git clone https://github.com/kentwait/docker-jupyter-cuda.git
+git clone --recurse-submodules https://github.com/kentwait/docker-jupyter-cuda.git
 ```
 
 2. Open the Makefile and edit the following variables at the top of the Makefile to match your desired configuration:
